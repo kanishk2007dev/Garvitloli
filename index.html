@@ -147,7 +147,7 @@
 <body>
 
     <div id="game-container"></div>
-    <div id="loading">Loading High-Res Assets...</div>
+    <div id="loading">Loading Assets...</div>
 
     <div id="ui-layer" class="hidden">
         <div class="hud-top">
@@ -229,7 +229,6 @@
         function init() {
             // Setup Scene
             scene = new THREE.Scene();
-            // Lighter fog for better visibility of background
             scene.fog = new THREE.FogExp2(0x111111, 0.015); 
 
             // Setup Camera
@@ -237,12 +236,12 @@
             camera.position.set(0, 5, 12);
             camera.lookAt(0, 2, 0);
 
-            // Setup Renderer (High Quality)
+            // Setup Renderer
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-            renderer.outputEncoding = THREE.sRGBEncoding; // Critical for correct colors
+            renderer.outputEncoding = THREE.sRGBEncoding;
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
             renderer.toneMappingExposure = 1.1;
             document.getElementById('game-container').appendChild(renderer.domElement);
@@ -258,14 +257,16 @@
             dirLight.shadow.mapSize.height = 2048;
             scene.add(dirLight);
 
-            // Face Light (Keeps character face lit)
+            // Face Light
             const faceLight = new THREE.PointLight(0xffffff, 0.5, 10);
             faceLight.position.set(0, 3, 5);
-            scene.add(faceLight); // Add to scene, player will move through it, or add to player group
+            scene.add(faceLight);
 
             // Load Textures
             const loader = new THREE.TextureLoader();
             const bgUrl = 'https://raw.githubusercontent.com/kanishk2007dev/kanishk/refs/heads/main/IMG-20251213-WA0000.jpg';
+            
+            // Standardizing the user's raw URL to ensure it loads correctly
             const playerUrl = 'https://raw.githubusercontent.com/kanishk2007dev/Garvitloli/refs/heads/main/IMG-20251215-WA0012.jpg';
 
             let loadedCount = 0;
@@ -279,9 +280,8 @@
                 backgroundTexture.encoding = THREE.sRGBEncoding;
                 backgroundTexture.minFilter = THREE.LinearFilter;
                 
-                // Create a giant sphere for the background (Skybox)
                 const geometry = new THREE.SphereGeometry(500, 60, 40);
-                geometry.scale(-1, 1, 1); // Invert normals
+                geometry.scale(-1, 1, 1);
                 const material = new THREE.MeshBasicMaterial({ map: texture });
                 const mesh = new THREE.Mesh(geometry, material);
                 scene.add(mesh);
@@ -295,13 +295,15 @@
                 playerTexture.minFilter = THREE.LinearFilter;
                 playerTexture.magFilter = THREE.LinearFilter;
                 
-                // Calculate aspect ratio so the face isn't stretched
                 if (texture.image) {
                     playerAspectRatio = texture.image.width / texture.image.height;
                 }
                 
                 checkLoad();
-            }, undefined, checkLoad);
+            }, undefined, (err) => {
+                console.error("Error loading player image", err);
+                checkLoad(); // Proceed even if player image fails (fallback will be blank/color)
+            });
         }
 
         function initGame() {
@@ -324,7 +326,6 @@
 
         function initMaterials() {
             // --- Custom Shader Material for Player ---
-            // Adjusted threshold and softness for better face preservation
             const uniforms = {
                 uTexture: { value: playerTexture }
             };
@@ -349,10 +350,9 @@
                         // Calculate brightness
                         float brightness = dot(color.rgb, vec3(0.299, 0.587, 0.114));
                         
-                        // Soft edge thresholding
-                        // Lowered threshold to 0.05 to keep hair and eyes
-                        // Smoothstep creates a soft fade instead of harsh jagged pixels
-                        float alpha = smoothstep(0.05, 0.2, brightness); 
+                        // Lowered threshold significantly to preserve black hair/clothes
+                        // Only remove absolute pitch black background
+                        float alpha = smoothstep(0.01, 0.08, brightness); 
                         
                         gl_FragColor = vec4(color.rgb, alpha);
                     }
@@ -375,7 +375,6 @@
                 emissive: 0x332200
             });
             
-            // Train materials
             materials.train = new THREE.MeshStandardMaterial({ color: 0x1b5e20, roughness: 0.4, metalness: 0.3 });
             materials.train2 = new THREE.MeshStandardMaterial({ color: 0xb71c1c, roughness: 0.4, metalness: 0.3 });
             
@@ -385,15 +384,12 @@
         function createPlayer() {
             player = new THREE.Group();
 
-            // Calculate dimensions based on aspect ratio
-            // Fix height to 2.5, adjust width dynamically
             const height = 2.5;
             const width = height * playerAspectRatio;
 
             const charGeo = new THREE.PlaneGeometry(width, height);
             const charMesh = new THREE.Mesh(charGeo, materials.playerShader);
             charMesh.position.y = 1.5; 
-            // charMesh.castShadow = true; // Planes casting shadow can look weird with transparent textures
             player.add(charMesh);
 
             // Hoverboard
@@ -407,7 +403,6 @@
             board.position.y = 0.1;
             player.add(board);
 
-            // Personal Player Light (Illuminates the face card)
             const playerLight = new THREE.PointLight(0xffffff, 0.8, 5);
             playerLight.position.set(0, 1, 2);
             player.add(playerLight);
@@ -419,7 +414,6 @@
             worldChunkGroup = new THREE.Group();
             scene.add(worldChunkGroup);
 
-            // Initial ground generation
             for (let i = 0; i < 20; i++) {
                 spawnWorldChunk(-10 + (i * 10));
             }
@@ -428,14 +422,12 @@
         function spawnWorldChunk(zPosition) {
             const chunk = new THREE.Group();
             
-            // Ground
             const groundGeo = new THREE.PlaneGeometry(30, 10);
             const ground = new THREE.Mesh(groundGeo, materials.ground);
             ground.rotation.x = -Math.PI / 2;
             ground.receiveShadow = true;
             chunk.add(ground);
 
-            // Tracks
             createTracks(chunk);
             
             chunk.position.z = zPosition;
@@ -444,7 +436,6 @@
 
         function createTracks(group) {
             [-LANE_WIDTH, 0, LANE_WIDTH].forEach(x => {
-                // Rails
                 const railGeo = new THREE.BoxGeometry(0.15, 0.1, 10);
                 const railLeft = new THREE.Mesh(railGeo, materials.rail);
                 railLeft.position.set(x - 0.6, 0.05, 0);
@@ -456,7 +447,6 @@
                 railRight.receiveShadow = true;
                 group.add(railRight);
 
-                // Ties
                 for(let i=0; i<5; i++) {
                     const tieGeo = new THREE.BoxGeometry(2.2, 0.1, 0.5);
                     const tie = new THREE.Mesh(tieGeo, materials.wood);
@@ -504,7 +494,7 @@
         function spawnObstacle() {
             const lane = Math.floor(Math.random() * 3) - 1; 
             const xPos = lane * LANE_WIDTH;
-            const zPos = -200; // Spawn much further away
+            const zPos = -200; 
 
             const type = Math.random();
             let obs;
@@ -518,7 +508,7 @@
                 obs.userData = { hitBox: {w: 2, h: 1.5, d: 0.5} };
             } else if (type < 0.6) {
                 // SUPER LONG TRAIN
-                const trainLength = 50; // Increased length significantly
+                const trainLength = 50; 
                 const geo = new THREE.BoxGeometry(2.9, 4.5, trainLength);
                 const mat = Math.random() > 0.5 ? materials.train : materials.train2;
                 obs = new THREE.Mesh(geo, mat);
@@ -526,7 +516,6 @@
                 obs.castShadow = true;
                 obs.userData = { hitBox: {w: 2.5, h: 4, d: trainLength - 1} }; 
 
-                // Train details (lights)
                 const lightGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2);
                 const lightMat = new THREE.MeshBasicMaterial({color: 0xffffaa});
                 
@@ -551,7 +540,6 @@
             scene.add(obs);
             obstacles.push(obs);
 
-            // Spawn Coins
             if (Math.random() > 0.3) {
                  const coinLane = (lane + 1) % 3 === 0 ? lane -1 : lane + 1;
                  spawnCoins(coinLane * LANE_WIDTH, zPos);
@@ -644,7 +632,6 @@
             player.rotation.z = (targetX - player.position.x) * -0.1;
             player.rotation.x = isJumping ? -0.2 : 0; 
             
-            // Subtle bobbing for "Running" effect
             if (!isJumping) {
                 player.position.y = Math.abs(Math.sin(Date.now() * 0.01)) * 0.1;
             }
@@ -676,7 +663,6 @@
                 obs.position.z += moveSpeed;
 
                 const pBox = new THREE.Box3().setFromObject(player);
-                // Adjust hitbox for the flat plane character
                 pBox.min.x += 0.5; pBox.max.x -= 0.5;
                 pBox.min.y += 0.2; pBox.max.y -= 0.2;
                 pBox.min.z += 0.2; pBox.max.z -= 0.2;
@@ -687,7 +673,7 @@
                     gameOver();
                 }
 
-                if (obs.position.z > 50) { // Despawn much later
+                if (obs.position.z > 50) { 
                     scene.remove(obs);
                     obstacles.splice(i, 1);
                 }
@@ -699,7 +685,7 @@
                 coin.position.z += moveSpeed;
                 coin.rotation.y += 0.1;
 
-                if (player.position.distanceTo(coin.position) < 2.0) { // Increased pickup range
+                if (player.position.distanceTo(coin.position) < 2.0) { 
                     scene.remove(coin);
                     coins.splice(i, 1);
                     coinCount++;
@@ -713,7 +699,7 @@
 
             if (Math.random() < 0.015 + (gameSpeed * 0.01)) { 
                 const lastObs = obstacles[obstacles.length-1];
-                if (!lastObs || lastObs.position.z > -80) { // Keep spacing for long trains
+                if (!lastObs || lastObs.position.z > -80) {
                      spawnObstacle();
                 }
             }
@@ -733,4 +719,4 @@
         init();
     </script>
 </body>
-  </html>
+</html>
